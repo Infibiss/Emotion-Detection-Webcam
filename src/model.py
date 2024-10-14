@@ -25,29 +25,16 @@ if not args.train and not args.display:
 
 # <---- PARAMS ---->
 emotions_id = {0: 'angry', 1: 'disgusted', 2: 'fear', 3: 'happy', 4: 'neutral', 5: 'sad', 6: 'surprise'}
-img_size = (96, 96)
+img_size = (224, 224)
 channels = 3
 class_count = len(emotions_id)
 img_shape = (img_size[0], img_size[1], channels)
-batch_size = 20
-epochs = 7
+batch_size = 25
+epochs = 10
 
 if args.all or args.train:
     # <---- MODEL STRUCTURE ---->
-    base_model = tf.keras.applications.efficientnet.EfficientNetB0(include_top=False, weights="imagenet", input_shape=img_shape, pooling='max')
-    # base_model.trainable = False
-    model = models.Sequential([
-        base_model,
-        layers.BatchNormalization(),
-        layers.Flatten(),
-        layers.Dense(512, activation='relu'),
-        layers.Dropout(0.1),
-        layers.Dense(256, activation='relu'),
-        layers.Dropout(0.1),
-        layers.Dense(128, activation='relu'),
-        layers.Dropout(0.1),
-        layers.Dense(7, activation='softmax')
-    ])
+    model = tf.keras.applications.efficientnet.EfficientNetB0(include_top=True, weights=None, classes=class_count, input_shape=img_shape)
 
     # <---- MAKE DATAFRAME ---->
     filepaths = []
@@ -92,6 +79,8 @@ if args.all or args.train:
 
     # <---- MODEL COMPILING & TRAINING ---->
     model.compile(loss='categorical_crossentropy', optimizer=Adamax(learning_rate=0.001), metrics=['accuracy'])
+    # model.summary()
+    # exit(0)
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
         'best_model_accuracy.keras',
         monitor='val_accuracy',
@@ -108,26 +97,24 @@ if args.all or args.train:
     plt.style.use('fivethirtyeight')
 
     tr_loss, val_loss = history.history['loss'], history.history['val_loss']
-    # index_loss = np.argmin(val_loss)
-    # loss_lowest = val_loss[index_loss]
-    # loss_label = f'Best epoch= {str(index_loss + 1)}'
+    index_loss = np.argmin(val_loss)
+    loss_lowest, loss_label = val_loss[index_loss], f'Best epoch= {str(index_loss + 1)}'
     plt.subplot(1, 2, 1)
     plt.plot(epochs_x, tr_loss, 'r', label='Training loss')
     plt.plot(epochs_x, val_loss, 'g', label='Validation loss')
-    # plt.scatter(index_loss + 1, loss_lowest, s=120, c='blue', label=loss_label)
+    plt.scatter(index_loss + 1, loss_lowest, s=120, c='blue', label=loss_label)
     plt.title('Training and Validation Loss')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
 
     tr_acc, val_acc = history.history['accuracy'], history.history['val_accuracy']
-    # index_acc = np.argmax(val_acc)
-    # acc_highest = val_acc[index_acc]
-    # acc_label = f'Best epoch= {str(index_acc + 1)}'
+    index_acc = np.argmax(val_acc)
+    acc_highest, acc_label = val_acc[index_acc], f'Best epoch= {str(index_acc + 1)}'
     plt.subplot(1, 2, 2)
     plt.plot(epochs_x, tr_acc, 'r', label='Training Accuracy')
     plt.plot(epochs_x, val_acc, 'g', label='Validation Accuracy')
-    # plt.scatter(index_acc + 1, acc_highest, s=150, c='blue', label=acc_label)
+    plt.scatter(index_acc + 1, acc_highest, s=120, c='blue', label=acc_label)
     plt.title('Training and Validation Accuracy')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
