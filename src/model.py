@@ -1,17 +1,18 @@
 import numpy as np
 import pandas as pd
-import argparse
 import matplotlib.pyplot as plt
-import cv2
 from tqdm import tqdm
+import argparse
+import cv2
+import os
+
 import tensorflow as tf
-from tensorflow.keras import models, layers, regularizers
+from tensorflow.keras import models, layers
 from tensorflow.keras.optimizers import Adamax
-from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
-import os
 
 parser = argparse.ArgumentParser()
 
@@ -34,15 +35,24 @@ epochs = 10
 
 if args.all or args.train:
     # <---- MODEL STRUCTURE ---->
-    model = tf.keras.applications.efficientnet.EfficientNetB0(include_top=True, weights=None, classes=class_count, input_shape=img_shape)
+    inputs = layers.Input(shape=img_shape)
+
+    base_model = tf.keras.applications.EfficientNetB0(include_top=False, weights='imagenet', input_tensor=inputs, pooling='max')
+    base_model.trainable = False
+
+    x = layers.BatchNormalization()(base_model.output)
+    x = layers.Dense(256, activation='relu')(x)
+    x = layers.Dropout(0.5)(x)
+
+    outputs = layers.Dense(class_count, activation='softmax')(x)
+
+    model = models.Model(inputs=inputs, outputs=outputs)
 
     # <---- MAKE DATAFRAME ---->
     filepaths = []
     labels = []
 
-    res = set()
     for dirname, _, filenames in os.walk('../data'):
-        print(dirname)
         for filename in tqdm(filenames):
             if filename.endswith('.png'):
                 filepaths.append(os.path.join(dirname, filename))
@@ -52,10 +62,9 @@ if args.all or args.train:
     lSer = pd.Series(labels, name='labels')
     df = pd.concat([fSer, lSer], axis=1)
 
-    train_df, test_df = train_test_split(df, train_size=0.8, shuffle=True)
-    valid_df, test_df = train_test_split(test_df, train_size=0.6, shuffle=True)
+    train_df, test_df = train_test_split(df, train_size=0.8, shuffle=True, stratify=df['labels'])
+    valid_df, test_df = train_test_split(test_df, train_size=0.6, shuffle=True, stratify=test_df['labels'])
 
-    # Augmentation?
     tr_gen = ImageDataGenerator()
     ts_gen = ImageDataGenerator()
     train_gen = tr_gen.flow_from_dataframe(train_df, x_col='filepaths', y_col='labels', target_size=img_size,
@@ -69,13 +78,13 @@ if args.all or args.train:
                                           color_mode='rgb', shuffle=False, batch_size=batch_size)
 
     # <---- CLASS WEIGHTS ---->
-    classes = np.array(train_gen.classes)
-    class_weights = compute_class_weight(
-        class_weight='balanced',
-        classes=np.unique(classes),
-        y=classes
-    )
-    class_weights_dict = dict(enumerate(class_weights))
+    # classes = np.array(train_gen.classes)
+    # class_weights = compute_class_weight(
+    #     class_weight='balanced',
+    #     classes=np.unique(classes),
+    #     y=classes
+    # )
+    # class_weights_dict = dict(enumerate(class_weights))
 
     # <---- MODEL COMPILING & TRAINING ---->
     model.compile(loss='categorical_crossentropy', optimizer=Adamax(learning_rate=0.001), metrics=['accuracy'])
@@ -88,7 +97,7 @@ if args.all or args.train:
         mode='max',
         verbose=1
     )
-    history = model.fit(x=train_gen, epochs=epochs, class_weight=class_weights_dict, callbacks=[checkpoint], verbose=1, validation_data=valid_gen, validation_steps=None, shuffle=False)
+    history = model.fit(x=train_gen, epochs=epochs, callbacks=[checkpoint], verbose=1, validation_data=valid_gen, validation_steps=None, shuffle=False)
 
     # <---- MODEL TRAINING RESULTS ---->
     epochs_x = [i + 1 for i in range(epochs)]
